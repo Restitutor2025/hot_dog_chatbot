@@ -1,0 +1,11 @@
+# =============================================================================
+# File: requirements.txt
+# Updated: 2026-04-29
+# Purpose: Minimal runtime dependencies for the dog shopping chatbot API.
+# =============================================================================
+
+fastapi
+uvicorn
+pydantic
+python-dotenv
+llama-index-llms-ollama

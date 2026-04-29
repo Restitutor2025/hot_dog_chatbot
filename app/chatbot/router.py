@@ -1,0 +1,126 @@
+# =============================================================================
+# File: app/chatbot/router.py
+# Updated: 2026-04-29
+# Purpose: FastAPI routes for button selections and free-text Ollama chat.
+# =============================================================================
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+
+from app.chatbot.ollama_chat import generate_chat_response, get_ollama_settings
+from app.chatbot.options import (
+    ALL_SELECTABLE_OPTIONS,
+    CATEGORY_OPTIONS,
+    MAIN_OPTIONS,
+    MAIN_SELECTIONS,
+    MAIN_STEP,
+    OPTION_RESPONSES,
+)
+from app.chatbot.schemas import MessageRequest, SelectRequest
+
+
+router = APIRouter(prefix="/chat", tags=["chatbot"])
+
+
+def api_response(success: bool, message: str, data: dict | None = None) -> dict:
+    return {"success": success, "message": message, "data": data}
+
+
+def error_response(status_code: int, message: str, data: dict | None = None) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=api_response(False, message, data),
+    )
+
+
+@router.get("/options")
+def get_main_options() -> dict:
+    return api_response(
+        True,
+        "main options loaded",
+        {"step": MAIN_STEP, "options": MAIN_OPTIONS},
+    )
+
+
+@router.get("/options/{category}")
+def get_category_options(category: str) -> dict | JSONResponse:
+    normalized_category = category.strip().lower()
+    options = CATEGORY_OPTIONS.get(normalized_category)
+    if options is None:
+        return error_response(
+            400,
+            "invalid category",
+            {"category": category, "available_categories": list(CATEGORY_OPTIONS.keys())},
+        )
+
+    return api_response(
+        True,
+        f"{normalized_category} options loaded",
+        {"step": normalized_category, "options": options},
+    )
+
+
+@router.post("/select")
+def select_option(request: SelectRequest) -> dict | JSONResponse:
+    selected = request.selected.strip()
+    if not selected:
+        return error_response(400, "selected is required", {"available_options": ALL_SELECTABLE_OPTIONS})
+
+    if selected in MAIN_SELECTIONS:
+        selection = MAIN_SELECTIONS[selected]
+        return api_response(
+            True,
+            "selection handled",
+            {
+                "selected": selected,
+                "answer": selection["answer"],
+                "next_step": selection["next_step"],
+                "options": selection["options"],
+            },
+        )
+
+    answer = OPTION_RESPONSES.get(selected)
+    if answer is None:
+        return error_response(
+            400,
+            "unsupported selection",
+            {"selected": selected, "available_options": ALL_SELECTABLE_OPTIONS},
+        )
+
+    return api_response(
+        True,
+        "selection handled",
+        {
+            "selected": selected,
+            "answer": answer,
+            "next_step": MAIN_STEP,
+            "options": MAIN_OPTIONS,
+        },
+    )
+
+
+@router.post("/message")
+def chat_message(request: MessageRequest) -> dict | JSONResponse:
+    message = request.message.strip()
+    if not message:
+        return error_response(400, "message is required", None)
+
+    settings = get_ollama_settings()
+    try:
+        answer = generate_chat_response(message)
+    except Exception as exc:
+        return error_response(
+            503,
+            "ollama request failed",
+            {
+                "error": str(exc),
+                "base_url": settings.base_url,
+                "model": settings.model,
+            },
+        )
+
+    return api_response(
+        True,
+        "chat response generated",
+        {"answer": answer, "model": settings.model, "base_url": settings.base_url},
+    )
