@@ -1,0 +1,11 @@
+# =============================================================================
+# File: .gitignore
+# Updated: 2026-05-07
+# Purpose: Ignore local Python environments and generated cache files.
+# =============================================================================
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env

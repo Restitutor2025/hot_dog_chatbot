@@ -1,6 +1,6 @@
 # =============================================================================
 # File: app/chatbot/router.py
-# Updated: 2026-04-29
+# Updated: 2026-05-07
 # Purpose: FastAPI routes for button selections and free-text Ollama chat.
 # =============================================================================
 
@@ -34,7 +34,7 @@ def error_response(status_code: int, message: str, data: dict | None = None) -> 
 
 
 @router.get("/options")
-def get_main_options() -> dict:
+def get_main_options():
     return api_response(
         True,
         "main options loaded",
@@ -43,7 +43,7 @@ def get_main_options() -> dict:
 
 
 @router.get("/options/{category}")
-def get_category_options(category: str) -> dict | JSONResponse:
+def get_category_options(category: str):
     normalized_category = category.strip().lower()
     options = CATEGORY_OPTIONS.get(normalized_category)
     if options is None:
@@ -61,7 +61,7 @@ def get_category_options(category: str) -> dict | JSONResponse:
 
 
 @router.post("/select")
-def select_option(request: SelectRequest) -> dict | JSONResponse:
+def select_option(request: SelectRequest):
     selected = request.selected.strip()
     if not selected:
         return error_response(400, "selected is required", {"available_options": ALL_SELECTABLE_OPTIONS})
@@ -100,7 +100,7 @@ def select_option(request: SelectRequest) -> dict | JSONResponse:
 
 
 @router.post("/message")
-def chat_message(request: MessageRequest) -> dict | JSONResponse:
+def chat_message(request: MessageRequest):
     message = request.message.strip()
     if not message:
         return error_response(400, "message is required", None)

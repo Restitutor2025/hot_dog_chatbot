@@ -1,8 +1,22 @@
 # =============================================================================
 # File: app/main.py
-# Updated: 2026-04-29
-# Purpose: FastAPI entry point for the dog shopping chatbot API.
+# Updated: 2026-05-07
+# Purpose: FastAPI entry point and direct-run launcher for the chatbot API.
 # =============================================================================
+
+from pathlib import Path
+import sys
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+if __name__ == "__main__":
+    from app.bootstrap import run_dev_server
+
+    run_dev_server()
+    raise SystemExit(0)
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
