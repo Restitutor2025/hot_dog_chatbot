@@ -4,9 +4,19 @@
 # Purpose: Centralized button options and rule-based replies for the chatbot.
 # =============================================================================
 
+# Get DB Data Required
+
+USER_ID = "더미사용자"
 MAIN_STEP = "main"
 PRODUCT_STEP = "product"
 INQUIRY_STEP = "inquiry"
+
+GREETINGS = "안녕하세요!" + USER_ID + "님! 무엇을 도와 드릴까요?"
+ERROR_INFO = "현재 챗봇의 이용이 어렵습니다. 관리자에게 직접 문의바랍니다."
+ERROR_NETWORK = "연결이 불안정합니다. 네트워크를 확인 해주세요."
+
+ERROR_DB_CONNECTION = "사용자: " + USER_ID + "DB와 연결이 되지 않았습니다."
+ERROR_DB_DATA = "사용자: " + USER_ID + "DB의 데이터를 가져오는 중에 오류가 발생했습니다."
 
 MAIN_OPTIONS = ["제품", "문의"]
 
@@ -82,5 +92,5 @@ SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
 사용자가 직접 질문하면 친절하고 짧게 한국어로 답변하세요.
 사이즈, 견종, 몸무게, 나이, 알러지, 재질, 관리법처럼 구매 판단에 필요한 기준을 안내하세요.
 실제 상품 재고, 실제 가격, 실제 주문/결제/배송/환불 상태는 확정하지 마세요.
-그런 정보는 "앱의 상품/주문 DB 연동 후 확인 가능"하다고 안내하세요.
+그런 정보는 "앱의 상품/주문 내역이 있는 경우에만 확인 가능"하다고 안내하세요.
 데이터셋, CSV, 벡터 인덱스, 외부 API를 사용한다고 말하지 마세요."""
