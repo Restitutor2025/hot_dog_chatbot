@@ -1,8 +1,17 @@
-# =============================================================================
-# File: app/main.py
-# Updated: 2026-05-07
-# Purpose: FastAPI entry point and direct-run launcher for the chatbot API.
-# =============================================================================
+#
+#  main.py
+#  hot_dog_chatbot
+#
+#  Created by Codex on 2026-04-29.
+#  Updated by Codex on 2026-05-07.
+#
+#  Codex Update Log:
+#  - 2026-04-29: Added the FastAPI app, CORS setup, validation handler, and health route.
+#  - 2026-05-07: Added direct-run bootstrap support while preserving uvicorn imports.
+#
+#  God_Zero Update Log:
+#  - 2026-05-07: Session memory is mounted through app.chatbot.router.
+#
 
 from pathlib import Path
 import sys

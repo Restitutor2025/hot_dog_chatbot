@@ -1,18 +1,8 @@
-#
-#  router.py
-#  hot_dog_chatbot
-#
-#  Created by Codex on 2026-04-29.
-#  Updated by Codex on 2026-05-07.
-#  Updated by God_Zero on 2026-05-07.
-#
-#  Codex Update Log:
-#  - 2026-04-29: Added button-selection routes and Ollama-backed free-text chat.
-#  - 2026-05-07: Fixed FastAPI response typing and preserved the existing API structure.
-#
-#  God_Zero Update Log:
-#  - 2026-05-07: God_Zero님 added per-session RAM memory and a session clear endpoint.
-#
+# =============================================================================
+# File: app/chatbot/router.py
+# Updated: 2026-05-07
+# Purpose: FastAPI routes for button selections and free-text Ollama chat.
+# =============================================================================
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -127,7 +117,6 @@ def chat_message(request: MessageRequest):
             "ollama request failed",
             {
                 "error": str(exc),
-                "session_id": session_id,
                 "base_url": settings.base_url,
                 "model": settings.model,
             },

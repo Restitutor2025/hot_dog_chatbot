@@ -1,8 +1,18 @@
-# =============================================================================
-# File: app/chatbot/options.py
-# Updated: 2026-04-29
-# Purpose: Centralized button options and rule-based replies for the chatbot.
-# =============================================================================
+#
+#  options.py
+#  hot_dog_chatbot
+#
+#  Created by Codex on 2026-04-29.
+#  Updated by Codex on 2026-05-07.
+#  Updated by God_Zero on 2026-05-07.
+#
+#  Codex Update Log:
+#  - 2026-04-29: Centralized button options, rule-based replies, and the system prompt.
+#  - 2026-05-07: Preserved existing hardcoded option data and customer-service limits.
+#
+#  God_Zero Update Log:
+#  - 2026-05-07: God_Zero님 added session-memory behavior guidance to the system prompt.
+#
 
 # Get DB Data Required
 
@@ -90,6 +100,7 @@ ALL_SELECTABLE_OPTIONS = [
 SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
 앱은 애견용 옷, 하네스, 사료, 장난감, 입마개를 판매합니다.
 사용자가 직접 질문하면 친절하고 짧게 한국어로 답변하세요.
+같은 session_id로 이어지는 대화에서는 이전 대화 내용을 참고해 세션별로 기억을 한 상태로 연속된 대화를 하세요.
 사이즈, 견종, 몸무게, 나이, 알러지, 재질, 관리법처럼 구매 판단에 필요한 기준을 안내하세요.
 실제 상품 재고, 실제 가격, 실제 주문/결제/배송/환불 상태는 확정하지 마세요.
 그런 정보는 "앱의 상품/주문 내역이 있는 경우에만 확인 가능"하다고 안내하세요.

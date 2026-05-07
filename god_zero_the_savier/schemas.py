@@ -1,18 +1,8 @@
-#
-#  schemas.py
-#  hot_dog_chatbot
-#
-#  Created by Codex on 2026-04-29.
-#  Updated by Codex on 2026-05-07.
-#  Updated by God_Zero on 2026-05-07.
-#
-#  Codex Update Log:
-#  - 2026-04-29: Added base request and response schemas for the chatbot API.
-#  - 2026-05-07: Preserved existing schemas while adding session-aware response data.
-#
-#  God_Zero Update Log:
-#  - 2026-05-07: God_Zero님 added optional session_id support for RAM-based conversation memory.
-#
+# =============================================================================
+# File: app/chatbot/schemas.py
+# Updated: 2026-04-29
+# Purpose: Pydantic request and response schemas for chatbot endpoints.
+# =============================================================================
 
 from typing import Any
 
@@ -36,7 +26,7 @@ class SelectRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str = Field(..., min_length=1)
-    session_id: str | None = None
+    session_id: str | None = Field(default=None, min_length=1)
 
 
 class SelectData(BaseModel):

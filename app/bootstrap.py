@@ -1,8 +1,16 @@
-# =============================================================================
-# File: app/bootstrap.py
-# Updated: 2026-05-07
-# Purpose: Prepare .venv, ensure the Ollama model, and launch the API server.
-# =============================================================================
+#
+#  bootstrap.py
+#  hot_dog_chatbot
+#
+#  Created by Codex on 2026-05-07.
+#  Updated by Codex on 2026-05-07.
+#
+#  Codex Update Log:
+#  - 2026-05-07: Added automatic .venv setup, requirements install, Ollama model pull, and server launch.
+#
+#  God_Zero Update Log:
+#  - 2026-05-07: No direct bootstrap changes; session memory is prepared in app.chatbot.memory.
+#
 
 from __future__ import annotations
 

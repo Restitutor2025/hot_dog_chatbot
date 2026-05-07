@@ -1,18 +1,8 @@
-#
-#  ollama_chat.py
-#  hot_dog_chatbot
-#
-#  Created by Codex on 2026-04-29.
-#  Updated by Codex on 2026-05-07.
-#  Updated by God_Zero on 2026-05-07.
-#
-#  Codex Update Log:
-#  - 2026-04-29: Added local Ollama chat generation without CSV, RAG, or vector indexes.
-#  - 2026-05-07: Preserved the Ollama defaults and wired history into direct-message chat.
-#
-#  God_Zero Update Log:
-#  - 2026-05-07: God_Zero님 added session history messages to support continuous conversations.
-#
+# =============================================================================
+# File: app/chatbot/ollama_chat.py
+# Updated: 2026-04-29
+# Purpose: Ollama-backed LlamaIndex chat client without RAG or vector indexing.
+# =============================================================================
 
 import os
 from functools import lru_cache
