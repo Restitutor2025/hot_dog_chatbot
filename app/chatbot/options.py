@@ -36,9 +36,12 @@ INQUIRY_STEP = "inquiry"
 GREETINGS = "안녕하세요!" + USER_ID + "님! 무엇을 도와 드릴까요?"
 ERROR_INFO = "현재 챗봇의 이용이 어렵습니다. 관리자에게 직접 문의바랍니다."
 ERROR_NETWORK = "연결이 불안정합니다. 네트워크를 확인 해주세요."
+ERROR_NO_DATA = "죄송합니다. 구매 이력정보가 존재하지 않습니다. 실제로 구매했던 상품이 맞는지 확인 해주세요."
 
 ERROR_DB_CONNECTION = "사용자: " + USER_ID + "DB와 연결이 되지 않았습니다."
-ERROR_DB_DATA = "사용자: " + USER_ID + "DB의 데이터를 가져오는 중에 오류가 발생했습니다."
+ERROR_DB_DATA = (
+    "사용자: " + USER_ID + "DB의 데이터를 가져오는 중에 오류가 발생했습니다."
+)
 
 MAIN_OPTIONS = ["제품", "문의"]
 
@@ -177,7 +180,8 @@ SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
 사이즈, 견종, 몸무게, 나이, 알러지, 재질, 관리법처럼 구매 판단에 필요한 기준을 안내하세요.
 실제 상품 재고, 실제 가격, 실제 주문/결제/배송/환불 상태는 확정하지 마세요.
 상품 DB에서 조회한 추천 후보가 제공되면 그 후보 안에서만 상품명, 가격, 카테고리, 브랜드 등 확인 가능한 정보를 활용해 추천하세요.
-상품 DB에 없는 상품, 재고, 주문/결제/배송/환불 상태는 확정하지 마세요.
+주문/결제/배송/환불에 대한 정보는 반드시 DB의 buy, deliver 테이블에 해당 사용자와 해당 애완견에 대한 정보를 참조하며 존재하지 않을 경우에는
+ERROR_NO_DATA로 응답하세요.
 주문/결제/배송/환불 정보는 "앱의 상품/주문 내역이 있는 경우에만 확인 가능"하다고 안내하세요.
 데이터셋, CSV, 벡터 인덱스, 외부 API를 사용한다고 말하지 마세요."""
 
@@ -293,7 +297,9 @@ def _compact_product(row: dict[str, Any]) -> dict[str, Any]:
     return compacted
 
 
-def search_products(message: str, limit: int = MAX_RECOMMENDATIONS) -> list[dict[str, Any]]:
+def search_products(
+    message: str, limit: int = MAX_RECOMMENDATIONS
+) -> list[dict[str, Any]]:
     columns = get_product_columns()
     select_columns = _selectable_columns(columns)
     text_columns = _searchable_text_columns(columns)
@@ -307,8 +313,7 @@ def search_products(message: str, limit: int = MAX_RECOMMENDATIONS) -> list[dict
         term_clauses = []
         for term in terms:
             column_clauses = [
-                f"{_quote_identifier(column)} LIKE %s"
-                for column in text_columns
+                f"{_quote_identifier(column)} LIKE %s" for column in text_columns
             ]
             term_clauses.append("(" + " OR ".join(column_clauses) + ")")
             params.extend([f"%{term}%"] * len(text_columns))
@@ -316,8 +321,7 @@ def search_products(message: str, limit: int = MAX_RECOMMENDATIONS) -> list[dict
 
     if price_limit is not None and price_columns:
         price_clause = " OR ".join(
-            f"{_quote_identifier(column)} <= %s"
-            for column in price_columns
+            f"{_quote_identifier(column)} <= %s" for column in price_columns
         )
         where_clauses.append(f"({price_clause})")
         params.extend([price_limit] * len(price_columns))
