@@ -37,6 +37,11 @@ class SelectRequest(BaseModel):
 class MessageRequest(BaseModel):
     message: str = Field(..., min_length=1)
     session_id: str | None = None
+    user_seq: int | None = Field(default=None, ge=1)
+    user_id: str | None = Field(default=None, min_length=1)
+    buy_seq: int | None = Field(default=None, ge=1)
+    deliver_seq: int | None = Field(default=None, ge=1)
+    product_seq: int | None = Field(default=None, ge=1)
 
 
 class SelectData(BaseModel):

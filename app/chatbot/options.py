@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from functools import lru_cache
 from typing import Any
@@ -38,8 +39,8 @@ ERROR_INFO = "현재 챗봇의 이용이 어렵습니다. 관리자에게 직접
 ERROR_NETWORK = "연결이 불안정합니다. 네트워크를 확인 해주세요."
 ERROR_NO_DATA = "죄송합니다. 구매 이력정보가 존재하지 않습니다. 실제로 구매했던 상품이 맞는지 확인 해주세요."
 
-ERROR_DB_CONNECTION = "사용자: " + USER_ID + "DB와 연결이 되지 않았습니다."
-ERROR_DB_DATA = (
+ERROR_DB_CONNECTION_MANAGER = "사용자: " + USER_ID + "DB와 연결이 되지 않았습니다."
+ERROR_DB_DATA_MANAGER = (
     "사용자: " + USER_ID + "DB의 데이터를 가져오는 중에 오류가 발생했습니다."
 )
 
@@ -113,10 +114,14 @@ ALL_SELECTABLE_OPTIONS = [
 ]
 
 PRODUCT_TABLE = "product"
+BUY_TABLE = "buy"
+DELIVER_TABLE = "deliver"
 MAX_RECOMMENDATIONS = 5
+MAX_HISTORY_ROWS = 5
 MAX_SEARCH_TERMS = 8
 TEXT_COLUMN_TYPES = ("char", "text", "enum", "set", "json")
 NUMBER_COLUMN_TYPES = ("int", "decimal", "float", "double", "real")
+BINARY_COLUMN_TYPES = ("blob", "binary", "varbinary")
 PREFERRED_TEXT_COLUMNS = (
     "name",
     "product_name",
@@ -172,10 +177,51 @@ STOPWORDS = {
     "반려견",
     "애견",
 }
+TERM_SUFFIXES = (
+    "해주세요",
+    "해줘",
+    "주세요",
+    "알려주세요",
+    "알려줘",
+    "있나요",
+    "있어",
+    "추천",
+    "문의",
+)
+
+BUY_INTENT_KEYWORDS = (
+    "구매",
+    "구입",
+    "주문",
+    "결제",
+    "환불",
+    "반품",
+    "교환",
+    "취소",
+    "내역",
+    "샀",
+    "산",
+    "buy",
+    "order",
+    "payment",
+    "refund",
+)
+DELIVER_INTENT_KEYWORDS = (
+    "배송",
+    "배달",
+    "택배",
+    "송장",
+    "운송장",
+    "도착",
+    "출고",
+    "delivery",
+    "deliver",
+)
 
 SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
 앱은 애견용 옷, 하네스, 사료, 장난감, 입마개를 판매합니다.
 사용자가 직접 질문하면 친절하고 짧게 한국어로 답변하세요.
+반드시 config.py파일을 읽어 DB에 연동한 후 응답하세요. DB에 없는 데이터를 절대로 추론하지 마세요.
 같은 session_id로 이어지는 대화에서는 이전 대화 내용을 참고해 세션별로 기억을 한 상태로 연속된 대화를 하세요.
 사이즈, 견종, 몸무게, 나이, 알러지, 재질, 관리법처럼 구매 판단에 필요한 기준을 안내하세요.
 실제 상품 재고, 실제 가격, 실제 주문/결제/배송/환불 상태는 확정하지 마세요.
@@ -187,7 +233,16 @@ ERROR_NO_DATA로 응답하세요.
 
 
 class ProductRepositoryError(RuntimeError):
-    pass
+    def __init__(self, message: str, user_message: str = ERROR_INFO):
+        super().__init__(message)
+        self.user_message = user_message
+
+
+@dataclass(frozen=True)
+class ChatDatabaseContext:
+    source: str
+    prompt: str
+    records: list[dict[str, Any]]
 
 
 def _connect():
@@ -205,7 +260,10 @@ def _connect():
             write_timeout=10,
         )
     except Exception as exc:
-        raise ProductRepositoryError("product database connection failed") from exc
+        raise ProductRepositoryError(
+            "product database connection failed",
+            ERROR_NETWORK,
+        ) from exc
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -235,10 +293,18 @@ def _is_number_column(column_type: str) -> bool:
     return any(type_name in column_type for type_name in NUMBER_COLUMN_TYPES)
 
 
+def _is_binary_column(column_type: str) -> bool:
+    return any(type_name in column_type for type_name in BINARY_COLUMN_TYPES)
+
+
 def _selectable_columns(columns: tuple[dict[str, str], ...]) -> list[str]:
     names = [column["name"] for column in columns]
     preferred = [name for name in PREFERRED_OUTPUT_COLUMNS if name in names]
-    fallback = [name for name in names if name not in preferred]
+    fallback = [
+        column["name"]
+        for column in columns
+        if column["name"] not in preferred and not _is_binary_column(column["type"])
+    ]
     return [*preferred, *fallback][:12]
 
 
@@ -265,6 +331,9 @@ def _extract_terms(message: str) -> list[str]:
     raw_terms = re.findall(r"[0-9A-Za-z가-힣]+", message.lower())
     terms: list[str] = []
     for term in raw_terms:
+        for suffix in TERM_SUFFIXES:
+            if term.endswith(suffix) and len(term) > len(suffix):
+                term = term[: -len(suffix)]
         if len(term) < 2 or term in STOPWORDS or term in terms:
             continue
         terms.append(term)
@@ -286,58 +355,140 @@ def _extract_price_limit(message: str) -> int | None:
     return None
 
 
-def _compact_product(row: dict[str, Any]) -> dict[str, Any]:
+def _compact_row(row: dict[str, Any]) -> dict[str, Any]:
     compacted: dict[str, Any] = {}
     for key, value in row.items():
         if value is None or value == "":
             continue
+        if isinstance(value, bytes | bytearray | memoryview):
+            continue
+        if hasattr(value, "isoformat"):
+            value = value.isoformat(sep=" ")
         if isinstance(value, str) and len(value) > 180:
             value = value[:177].rstrip() + "..."
         compacted[key] = value
     return compacted
 
 
+def _compact_product(row: dict[str, Any]) -> dict[str, Any]:
+    return _compact_row(row)
+
+
+def _contains_any_keyword(message: str, keywords: tuple[str, ...]) -> bool:
+    lowered = message.lower()
+    return any(keyword in lowered for keyword in keywords)
+
+
+def resolve_lookup_source(message: str) -> str:
+    if _contains_any_keyword(message, DELIVER_INTENT_KEYWORDS):
+        return DELIVER_TABLE
+    if _contains_any_keyword(message, BUY_INTENT_KEYWORDS):
+        return BUY_TABLE
+    return PRODUCT_TABLE
+
+
+def _normalize_user_identifier(user_id: str | None) -> str | None:
+    if user_id is not None and user_id.strip():
+        return user_id.strip()
+    if USER_ID.strip() and USER_ID != "더미사용자":
+        return USER_ID.strip()
+    return None
+
+
+def _resolve_user_seq(
+    connection: pymysql.connections.Connection,
+    user_seq: int | None = None,
+    user_id: str | None = None,
+) -> int | None:
+    if user_seq is not None:
+        return user_seq
+
+    user_identifier = _normalize_user_identifier(user_id)
+    if user_identifier is None:
+        return None
+
+    if user_identifier.isdecimal():
+        return int(user_identifier)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT user_seq
+            FROM users
+            WHERE user_id = %s OR user_name = %s
+            LIMIT 1
+            """,
+            (user_identifier, user_identifier),
+        )
+        row = cursor.fetchone()
+
+    if not row:
+        return None
+    return row["user_seq"]
+
+
 def search_products(
-    message: str, limit: int = MAX_RECOMMENDATIONS
+    message: str,
+    limit: int = MAX_RECOMMENDATIONS,
+    product_seq: int | None = None,
 ) -> list[dict[str, Any]]:
-    columns = get_product_columns()
-    select_columns = _selectable_columns(columns)
-    text_columns = _searchable_text_columns(columns)
-    price_columns = _price_columns(columns)
     terms = _extract_terms(message)
     price_limit = _extract_price_limit(message)
 
     where_clauses: list[str] = []
     params: list[Any] = []
-    if terms and text_columns:
+    searchable_columns = (
+        "p.product_name",
+        "m.maker_name",
+        "pc.product_category_name",
+        "psc.product_sub_category_name",
+        "db.dog_breeds_name",
+        "ds.dog_size_name",
+        "da.dog_age",
+        "alg.dog_allergy_name",
+    )
+    if terms:
         term_clauses = []
         for term in terms:
-            column_clauses = [
-                f"{_quote_identifier(column)} LIKE %s" for column in text_columns
-            ]
+            column_clauses = [f"{column} LIKE %s" for column in searchable_columns]
             term_clauses.append("(" + " OR ".join(column_clauses) + ")")
-            params.extend([f"%{term}%"] * len(text_columns))
+            params.extend([f"%{term}%"] * len(searchable_columns))
         where_clauses.append("(" + " OR ".join(term_clauses) + ")")
 
-    if price_limit is not None and price_columns:
-        price_clause = " OR ".join(
-            f"{_quote_identifier(column)} <= %s" for column in price_columns
-        )
-        where_clauses.append(f"({price_clause})")
-        params.extend([price_limit] * len(price_columns))
+    if price_limit is not None:
+        where_clauses.append("(p.product_price <= %s)")
+        params.append(price_limit)
+
+    if product_seq is not None:
+        where_clauses.append("(p.product_seq = %s)")
+        params.append(product_seq)
 
     where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-    order_sql = ""
-    if price_columns:
-        order_sql = f"ORDER BY {_quote_identifier(price_columns[0])} ASC"
-
-    sql = (
-        f"SELECT {', '.join(_quote_identifier(column) for column in select_columns)} "
-        f"FROM {_quote_identifier(PRODUCT_TABLE)} "
-        f"{where_sql} "
-        f"{order_sql} "
-        f"LIMIT %s"
-    )
+    sql = f"""
+        SELECT
+            p.product_seq,
+            p.product_name,
+            p.product_qty,
+            p.product_price,
+            m.maker_name,
+            pc.product_category_name,
+            psc.product_sub_category_name,
+            db.dog_breeds_name,
+            ds.dog_size_name,
+            da.dog_age,
+            alg.dog_allergy_name
+        FROM product p
+        LEFT JOIN maker m ON m.maker_seq = p.maker_seq
+        LEFT JOIN product_category pc ON pc.product_category_seq = p.product_category_seq
+        LEFT JOIN product_sub_category psc ON psc.product_sub_category_seq = p.product_sub_category_seq
+        LEFT JOIN dog_breeds db ON db.dog_breeds_seq = p.dog_breeds_seq
+        LEFT JOIN dog_size ds ON ds.dog_size_seq = p.dog_size_seq
+        LEFT JOIN dog_age da ON da.dog_age_seq = p.dog_age_seq
+        LEFT JOIN dog_allergy alg ON alg.dog_allergy_seq = p.dog_allergy_seq
+        {where_sql}
+        ORDER BY p.product_price ASC, p.product_seq ASC
+        LIMIT %s
+    """
     params.append(limit)
 
     try:
@@ -353,12 +504,175 @@ def search_products(
     return [_compact_product(row) for row in rows]
 
 
+def search_buy_history(
+    user_seq: int | None = None,
+    user_id: str | None = None,
+    buy_seq: int | None = None,
+    product_seq: int | None = None,
+    limit: int = MAX_HISTORY_ROWS,
+) -> list[dict[str, Any]]:
+    sql = """
+        SELECT
+            b.buy_seq,
+            b.buy_date,
+            b.buy_qty,
+            b.buy_price,
+            b.user_seq,
+            b.product_seq,
+            p.product_name,
+            p.product_price
+        FROM buy b
+        LEFT JOIN product p ON p.product_seq = b.product_seq
+        WHERE b.user_seq = %s
+    """
+    params: list[Any] = []
+
+    try:
+        with _connect() as connection:
+            resolved_user_seq = _resolve_user_seq(connection, user_seq, user_id)
+            if resolved_user_seq is None:
+                return []
+
+            params.append(resolved_user_seq)
+            if buy_seq is not None:
+                sql += " AND b.buy_seq = %s"
+                params.append(buy_seq)
+            if product_seq is not None:
+                sql += " AND b.product_seq = %s"
+                params.append(product_seq)
+
+            sql += " ORDER BY b.buy_date DESC, b.buy_seq DESC LIMIT %s"
+            params.append(limit)
+
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+    except Exception as exc:
+        if isinstance(exc, ProductRepositoryError):
+            raise
+        raise ProductRepositoryError("buy history lookup failed", ERROR_INFO) from exc
+
+    return [_compact_row(row) for row in rows]
+
+
+def search_deliver_history(
+    user_seq: int | None = None,
+    user_id: str | None = None,
+    deliver_seq: int | None = None,
+    buy_seq: int | None = None,
+    product_seq: int | None = None,
+    limit: int = MAX_HISTORY_ROWS,
+) -> list[dict[str, Any]]:
+    sql = """
+        SELECT
+            d.deliver_seq,
+            d.user_seq,
+            d.buy_seq,
+            d.staff_seq,
+            d.deliver_start_date,
+            d.deliver_end_date,
+            b.buy_date,
+            b.buy_qty,
+            b.buy_price,
+            b.product_seq,
+            p.product_name,
+            p.product_price
+        FROM deliver d
+        LEFT JOIN buy b ON b.buy_seq = d.buy_seq
+        LEFT JOIN product p ON p.product_seq = b.product_seq
+        WHERE d.user_seq = %s
+    """
+    params: list[Any] = []
+
+    try:
+        with _connect() as connection:
+            resolved_user_seq = _resolve_user_seq(connection, user_seq, user_id)
+            if resolved_user_seq is None:
+                return []
+
+            params.append(resolved_user_seq)
+            if deliver_seq is not None:
+                sql += " AND d.deliver_seq = %s"
+                params.append(deliver_seq)
+            if buy_seq is not None:
+                sql += " AND d.buy_seq = %s"
+                params.append(buy_seq)
+            if product_seq is not None:
+                sql += " AND b.product_seq = %s"
+                params.append(product_seq)
+
+            sql += """
+                ORDER BY
+                    COALESCE(d.deliver_start_date, d.deliver_end_date) DESC,
+                    d.deliver_seq DESC
+                LIMIT %s
+            """
+            params.append(limit)
+
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+    except Exception as exc:
+        if isinstance(exc, ProductRepositoryError):
+            raise
+        raise ProductRepositoryError("deliver history lookup failed", ERROR_INFO) from exc
+
+    return [_compact_row(row) for row in rows]
+
+
 def format_products_for_prompt(products: list[dict[str, Any]]) -> str:
     if not products:
-        return "상품 DB에서 질문과 직접 연결되는 상품 후보를 찾지 못했습니다."
+        return ERROR_NO_DATA
 
     lines = ["상품 DB에서 조회한 추천 후보:"]
     for index, product in enumerate(products, start=1):
         fields = ", ".join(f"{key}: {value}" for key, value in product.items())
         lines.append(f"{index}. {fields}")
     return "\n".join(lines)
+
+
+def format_records_for_prompt(source: str, records: list[dict[str, Any]]) -> str:
+    if not records:
+        return ERROR_NO_DATA
+
+    title_by_source = {
+        BUY_TABLE: "구매 DB에서 조회한 구매 내역:",
+        DELIVER_TABLE: "배송 DB에서 조회한 배송 내역:",
+    }
+    lines = [title_by_source.get(source, "DB에서 조회한 내역:")]
+    for index, record in enumerate(records, start=1):
+        fields = ", ".join(f"{key}: {value}" for key, value in record.items())
+        lines.append(f"{index}. {fields}")
+    return "\n".join(lines)
+
+
+def build_database_context_for_message(
+    message: str,
+    user_seq: int | None = None,
+    user_id: str | None = None,
+    buy_seq: int | None = None,
+    deliver_seq: int | None = None,
+    product_seq: int | None = None,
+) -> ChatDatabaseContext:
+    source = resolve_lookup_source(message)
+    if source == DELIVER_TABLE:
+        records = search_deliver_history(
+            user_seq=user_seq,
+            user_id=user_id,
+            deliver_seq=deliver_seq,
+            buy_seq=buy_seq,
+            product_seq=product_seq,
+        )
+        return ChatDatabaseContext(source, format_records_for_prompt(source, records), records)
+
+    if source == BUY_TABLE:
+        records = search_buy_history(
+            user_seq=user_seq,
+            user_id=user_id,
+            buy_seq=buy_seq,
+            product_seq=product_seq,
+        )
+        return ChatDatabaseContext(source, format_records_for_prompt(source, records), records)
+
+    records = search_products(message, product_seq=product_seq)
+    return ChatDatabaseContext(source, format_products_for_prompt(records), records)

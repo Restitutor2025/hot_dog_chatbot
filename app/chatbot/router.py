@@ -22,13 +22,15 @@ from app.chatbot.ollama_chat import generate_chat_response, get_ollama_settings
 from app.chatbot.options import (
     ALL_SELECTABLE_OPTIONS,
     CATEGORY_OPTIONS,
+    ERROR_INFO,
+    ERROR_NETWORK,
+    ERROR_NO_DATA,
     MAIN_OPTIONS,
     MAIN_SELECTIONS,
     MAIN_STEP,
     OPTION_RESPONSES,
     ProductRepositoryError,
-    format_products_for_prompt,
-    search_products,
+    build_database_context_for_message,
 )
 from app.chatbot.schemas import MessageRequest, SelectRequest
 
@@ -122,22 +124,56 @@ def chat_message(request: MessageRequest):
     session_id = normalize_session_id(request.session_id)
     history = get_history(session_id)
     settings = get_ollama_settings()
-    products = []
-    product_error = None
     try:
-        products = search_products(message)
+        database_context = build_database_context_for_message(
+            message,
+            user_seq=request.user_seq,
+            user_id=request.user_id,
+            buy_seq=request.buy_seq,
+            deliver_seq=request.deliver_seq,
+            product_seq=request.product_seq,
+        )
     except ProductRepositoryError as exc:
-        product_error = str(exc)
-
-    product_context = format_products_for_prompt(products)
-    try:
-        answer = generate_chat_response(message, history, product_context)
-    except Exception as exc:
+        answer = getattr(exc, "user_message", ERROR_INFO)
+        append_exchange(session_id, message, answer)
         return error_response(
             503,
-            "ollama request failed",
+            answer,
             {
-                "error": str(exc),
+                "answer": answer,
+                "error": answer,
+                "session_id": session_id,
+            },
+        )
+
+    if not database_context.records:
+        append_exchange(session_id, message, ERROR_NO_DATA)
+        return api_response(
+            True,
+            "chat response generated",
+            {
+                "answer": ERROR_NO_DATA,
+                "session_id": session_id,
+                "model": settings.model,
+                "base_url": settings.base_url,
+                "db_source": database_context.source,
+                "db_records": [],
+                "products": [],
+                "product_error": None,
+            },
+        )
+
+    try:
+        answer = generate_chat_response(message, history, database_context.prompt)
+    except Exception as exc:
+        answer = ERROR_NETWORK
+        append_exchange(session_id, message, answer)
+        return error_response(
+            503,
+            answer,
+            {
+                "answer": answer,
+                "error": answer,
                 "session_id": session_id,
                 "base_url": settings.base_url,
                 "model": settings.model,
@@ -153,8 +189,10 @@ def chat_message(request: MessageRequest):
             "session_id": session_id,
             "model": settings.model,
             "base_url": settings.base_url,
-            "products": products,
-            "product_error": product_error,
+            "db_source": database_context.source,
+            "db_records": database_context.records,
+            "products": database_context.records if database_context.source == "product" else [],
+            "product_error": None,
         },
     )
 
