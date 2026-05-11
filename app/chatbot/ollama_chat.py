@@ -62,13 +62,19 @@ def get_llm() -> Ollama:
     return llm
 
 
-def generate_chat_response(message: str, history: list[ChatHistoryMessage] | None = None) -> str:
+def generate_chat_response(
+    message: str,
+    history: list[ChatHistoryMessage] | None = None,
+    product_context: str | None = None,
+) -> str:
     llm = get_llm()
     chat_messages = [ChatMessage(role="system", content=SYSTEM_PROMPT)]
     chat_messages.extend(
         ChatMessage(role=history_message.role, content=history_message.content)
         for history_message in history or []
     )
+    if product_context:
+        chat_messages.append(ChatMessage(role="system", content=product_context))
     chat_messages.append(ChatMessage(role="user", content=message))
 
     response = llm.chat(

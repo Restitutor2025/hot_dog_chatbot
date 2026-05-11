@@ -27,6 +27,7 @@ from app.chatbot.options import (
     MAIN_STEP,
     OPTION_RESPONSES,
 )
+from app.chatbot.product_repository import ProductRepositoryError, format_products_for_prompt, search_products
 from app.chatbot.schemas import MessageRequest, SelectRequest
 
 
@@ -119,8 +120,16 @@ def chat_message(request: MessageRequest):
     session_id = normalize_session_id(request.session_id)
     history = get_history(session_id)
     settings = get_ollama_settings()
+    products = []
+    product_error = None
     try:
-        answer = generate_chat_response(message, history)
+        products = search_products(message)
+    except ProductRepositoryError as exc:
+        product_error = str(exc)
+
+    product_context = format_products_for_prompt(products)
+    try:
+        answer = generate_chat_response(message, history, product_context)
     except Exception as exc:
         return error_response(
             503,
@@ -142,6 +151,8 @@ def chat_message(request: MessageRequest):
             "session_id": session_id,
             "model": settings.model,
             "base_url": settings.base_url,
+            "products": products,
+            "product_error": product_error,
         },
     )
 
