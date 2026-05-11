@@ -26,8 +26,10 @@ from app.chatbot.options import (
     MAIN_SELECTIONS,
     MAIN_STEP,
     OPTION_RESPONSES,
+    ProductRepositoryError,
+    format_products_for_prompt,
+    search_products,
 )
-from app.chatbot.product_repository import ProductRepositoryError, format_products_for_prompt, search_products
 from app.chatbot.schemas import MessageRequest, SelectRequest
 
 
