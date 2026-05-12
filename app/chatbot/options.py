@@ -442,10 +442,8 @@ def search_products(
         "m.maker_name",
         "pc.product_category_name",
         "psc.product_sub_category_name",
-        "db.dog_breeds_name",
         "ds.dog_size_name",
         "da.dog_age",
-        "alg.dog_allergy_name",
     )
     if terms:
         term_clauses = []
@@ -473,18 +471,14 @@ def search_products(
             m.maker_name,
             pc.product_category_name,
             psc.product_sub_category_name,
-            db.dog_breeds_name,
             ds.dog_size_name,
-            da.dog_age,
-            alg.dog_allergy_name
+            da.dog_age
         FROM product p
         LEFT JOIN maker m ON m.maker_seq = p.maker_seq
         LEFT JOIN product_category pc ON pc.product_category_seq = p.product_category_seq
         LEFT JOIN product_sub_category psc ON psc.product_sub_category_seq = p.product_sub_category_seq
-        LEFT JOIN dog_breeds db ON db.dog_breeds_seq = p.dog_breeds_seq
         LEFT JOIN dog_size ds ON ds.dog_size_seq = p.dog_size_seq
         LEFT JOIN dog_age da ON da.dog_age_seq = p.dog_age_seq
-        LEFT JOIN dog_allergy alg ON alg.dog_allergy_seq = p.dog_allergy_seq
         {where_sql}
         ORDER BY p.product_price ASC, p.product_seq ASC
         LIMIT %s
