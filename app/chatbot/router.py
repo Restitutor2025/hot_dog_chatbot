@@ -24,13 +24,13 @@ from app.chatbot.options import (
     CATEGORY_OPTIONS,
     ERROR_INFO,
     ERROR_NETWORK,
-    ERROR_NO_DATA,
     MAIN_OPTIONS,
     MAIN_SELECTIONS,
     MAIN_STEP,
     OPTION_RESPONSES,
     ProductRepositoryError,
     build_database_context_for_message,
+    no_data_message_for_source,
 )
 from app.chatbot.schemas import MessageRequest, SelectRequest
 
@@ -147,12 +147,13 @@ def chat_message(request: MessageRequest):
         )
 
     if not database_context.records:
-        append_exchange(session_id, message, ERROR_NO_DATA)
+        answer = no_data_message_for_source(database_context.source)
+        append_exchange(session_id, message, answer)
         return api_response(
             True,
             "chat response generated",
             {
-                "answer": ERROR_NO_DATA,
+                "answer": answer,
                 "session_id": session_id,
                 "model": settings.model,
                 "base_url": settings.base_url,

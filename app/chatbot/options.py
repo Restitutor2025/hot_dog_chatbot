@@ -37,7 +37,10 @@ INQUIRY_STEP = "inquiry"
 GREETINGS = "안녕하세요!" + USER_ID + "님! 무엇을 도와 드릴까요?"
 ERROR_INFO = "현재 챗봇의 이용이 어렵습니다. 관리자에게 직접 문의바랍니다."
 ERROR_NETWORK = "연결이 불안정합니다. 네트워크를 확인 해주세요."
-ERROR_NO_DATA = "죄송합니다. 구매 이력정보가 존재하지 않습니다. 실제로 구매했던 상품이 맞는지 확인 해주세요."
+ERROR_PRODUCT_NO_DATA = "죄송합니다. 조건에 맞는 상품 정보를 찾지 못했습니다. 상품명이나 카테고리를 다시 확인해 주세요."
+ERROR_BUY_NO_DATA = "죄송합니다. 구매 이력정보가 존재하지 않습니다. 실제로 구매했던 상품이 맞는지 확인 해주세요."
+ERROR_DELIVER_NO_DATA = "죄송합니다. 배송 이력정보가 존재하지 않습니다. 주문 또는 배송 정보를 다시 확인해 주세요."
+ERROR_NO_DATA = ERROR_BUY_NO_DATA
 
 ERROR_DB_CONNECTION_MANAGER = "사용자: " + USER_ID + "DB와 연결이 되지 않았습니다."
 ERROR_DB_DATA_MANAGER = (
@@ -189,33 +192,22 @@ TERM_SUFFIXES = (
     "문의",
 )
 
-BUY_INTENT_KEYWORDS = (
-    "구매",
-    "구입",
-    "주문",
-    "결제",
-    "환불",
-    "반품",
-    "교환",
-    "취소",
-    "내역",
-    "샀",
-    "산",
-    "buy",
-    "order",
-    "payment",
-    "refund",
+BUY_LOOKUP_PATTERNS = (
+    r"(구매|구입|주문|결제)\s*(내역|이력|기록|목록)",
+    r"(구매|구입|주문|결제)\s*(조회|확인|상태)",
+    r"(내역|이력|기록)\s*(조회|확인|알려|보여)",
+    r"(내가|제가)\s*(구매|구입|주문|결제|산|샀던|샀는)",
+    r"(구매|구입|주문|결제)\s*(한|했던)\s*(상품|제품)",
+    r"(환불|반품|교환|취소)\s*(조회|확인|상태|가능|신청|처리|문의|해줘|해주세요)?",
+    r"\b(order|purchase|payment)\s*(history|lookup|status|check)\b",
+    r"\b(refund|return|exchange|cancel)\b",
 )
-DELIVER_INTENT_KEYWORDS = (
-    "배송",
-    "배달",
-    "택배",
-    "송장",
-    "운송장",
-    "도착",
-    "출고",
-    "delivery",
-    "deliver",
+DELIVER_LOOKUP_PATTERNS = (
+    r"(배송|배달|택배|출고)\s*(조회|확인|상태|내역|위치|추적|문의)",
+    r"(배송|배달|택배)\s*(어디|언제|도착)",
+    r"(송장|운송장)\s*(번호|조회|확인|알려|보여)?",
+    r"(도착|출고)\s*(예정|상태|조회|확인)",
+    r"\b(delivery|deliver|tracking|shipment)\s*(lookup|status|check|history)?\b",
 )
 
 SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
@@ -226,8 +218,8 @@ SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
 사이즈, 견종, 몸무게, 나이, 알러지, 재질, 관리법처럼 구매 판단에 필요한 기준을 안내하세요.
 실제 상품 재고, 실제 가격, 실제 주문/결제/배송/환불 상태는 확정하지 마세요.
 상품 DB에서 조회한 추천 후보가 제공되면 그 후보 안에서만 상품명, 가격, 카테고리, 브랜드 등 확인 가능한 정보를 활용해 추천하세요.
-주문/결제/배송/환불에 대한 정보는 반드시 DB의 buy, deliver 테이블에 해당 사용자와 해당 애완견에 대한 정보를 참조하며 존재하지 않을 경우에는
-ERROR_NO_DATA로 응답하세요.
+구매 내역, 주문/결제/배송 상태, 환불/반품/교환/취소처럼 사용자가 본인의 거래 조회를 명확히 요청한 경우에만
+DB의 buy, deliver 테이블 결과를 참조하세요. 해당 내역이 존재하지 않을 경우에는 제공된 데이터 없음 문구로 응답하세요.
 주문/결제/배송/환불 정보는 "앱의 상품/주문 내역이 있는 경우에만 확인 가능"하다고 안내하세요.
 데이터셋, CSV, 벡터 인덱스, 외부 API를 사용한다고 말하지 마세요."""
 
@@ -374,15 +366,23 @@ def _compact_product(row: dict[str, Any]) -> dict[str, Any]:
     return _compact_row(row)
 
 
-def _contains_any_keyword(message: str, keywords: tuple[str, ...]) -> bool:
+def _matches_any_pattern(message: str, patterns: tuple[str, ...]) -> bool:
     lowered = message.lower()
-    return any(keyword in lowered for keyword in keywords)
+    return any(re.search(pattern, lowered) for pattern in patterns)
+
+
+def no_data_message_for_source(source: str) -> str:
+    if source == DELIVER_TABLE:
+        return ERROR_DELIVER_NO_DATA
+    if source == BUY_TABLE:
+        return ERROR_BUY_NO_DATA
+    return ERROR_PRODUCT_NO_DATA
 
 
 def resolve_lookup_source(message: str) -> str:
-    if _contains_any_keyword(message, DELIVER_INTENT_KEYWORDS):
+    if _matches_any_pattern(message, DELIVER_LOOKUP_PATTERNS):
         return DELIVER_TABLE
-    if _contains_any_keyword(message, BUY_INTENT_KEYWORDS):
+    if _matches_any_pattern(message, BUY_LOOKUP_PATTERNS):
         return BUY_TABLE
     return PRODUCT_TABLE
 
@@ -616,7 +616,7 @@ def search_deliver_history(
 
 def format_products_for_prompt(products: list[dict[str, Any]]) -> str:
     if not products:
-        return ERROR_NO_DATA
+        return ERROR_PRODUCT_NO_DATA
 
     lines = ["상품 DB에서 조회한 추천 후보:"]
     for index, product in enumerate(products, start=1):
@@ -627,7 +627,7 @@ def format_products_for_prompt(products: list[dict[str, Any]]) -> str:
 
 def format_records_for_prompt(source: str, records: list[dict[str, Any]]) -> str:
     if not records:
-        return ERROR_NO_DATA
+        return no_data_message_for_source(source)
 
     title_by_source = {
         BUY_TABLE: "구매 DB에서 조회한 구매 내역:",
