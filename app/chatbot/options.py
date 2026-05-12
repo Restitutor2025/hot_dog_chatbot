@@ -41,6 +41,7 @@ ERROR_PRODUCT_NO_DATA = "죄송합니다. 조건에 맞는 상품 정보를 찾�
 ERROR_BUY_NO_DATA = "죄송합니다. 구매 이력정보가 존재하지 않습니다. 실제로 구매했던 상품이 맞는지 확인 해주세요."
 ERROR_DELIVER_NO_DATA = "죄송합니다. 배송 이력정보가 존재하지 않습니다. 주문 또는 배송 정보를 다시 확인해 주세요."
 ERROR_NO_DATA = ERROR_BUY_NO_DATA
+FEATURE_IN_PROGRESS_MESSAGE = "추가중인 기능입니다."
 
 ERROR_DB_CONNECTION_MANAGER = "사용자: " + USER_ID + "DB와 연결이 되지 않았습니다."
 ERROR_DB_DATA_MANAGER = (
@@ -198,16 +199,28 @@ BUY_LOOKUP_PATTERNS = (
     r"(내역|이력|기록)\s*(조회|확인|알려|보여)",
     r"(내가|제가)\s*(구매|구입|주문|결제|산|샀던|샀는)",
     r"(구매|구입|주문|결제)\s*(한|했던)\s*(상품|제품)",
-    r"(환불|반품|교환|취소)\s*(조회|확인|상태|가능|신청|처리|문의|해줘|해주세요)?",
+    r"(환불|반품|교환|취소)\s*(조회|확인|상태|신청|처리|해줘|해주세요)",
     r"\b(order|purchase|payment)\s*(history|lookup|status|check)\b",
     r"\b(refund|return|exchange|cancel)\b",
 )
 DELIVER_LOOKUP_PATTERNS = (
-    r"(배송|배달|택배|출고)\s*(조회|확인|상태|내역|위치|추적|문의)",
+    r"(배송|배달|택배|출고)\s*(조회|확인|상태|내역|위치|추적)",
     r"(배송|배달|택배)\s*(어디|언제|도착)",
     r"(송장|운송장)\s*(번호|조회|확인|알려|보여)?",
     r"(도착|출고)\s*(예정|상태|조회|확인)",
     r"\b(delivery|deliver|tracking|shipment)\s*(lookup|status|check|history)?\b",
+)
+PRODUCT_MESSAGE_PATTERNS = (
+    r"(상품|제품|하네스|사료|간식|옷|의류|장난감|입마개)",
+    r"(카테고리|브랜드|가격|사이즈|견종|몸무게|알러지|성분|재질|재고|추천)",
+    r"(어떤|무슨|뭐)\s*(상품|제품)",
+)
+SHOP_INQUIRY_PATTERNS = (
+    r"(문의|상담|고객\s*센터|관리자|상담원)",
+    r"(샵|쇼핑몰|매장|가게|스토어|앱|서비스)\s*(문의|정보|소개|운영|영업|전화|연락|상담)",
+    r"(영업\s*시간|운영\s*시간|전화\s*번호|연락처|고객\s*센터)",
+    r"(쿠폰|포인트|회원|계정|로그인|가입)\s*(문의|조회|확인|상담|문제|오류|도움)",
+    r"(환불|반품|교환|취소)\s*(문의|정책|방법|규정|안내|가능)",
 )
 
 SYSTEM_PROMPT = """당신은 애견 쇼핑 앱의 고객 응대 챗봇입니다.
@@ -385,6 +398,14 @@ def resolve_lookup_source(message: str) -> str:
     if _matches_any_pattern(message, BUY_LOOKUP_PATTERNS):
         return BUY_TABLE
     return PRODUCT_TABLE
+
+
+def is_shop_inquiry_message(message: str) -> bool:
+    if resolve_lookup_source(message) != PRODUCT_TABLE:
+        return False
+    if _matches_any_pattern(message, PRODUCT_MESSAGE_PATTERNS):
+        return False
+    return _matches_any_pattern(message, SHOP_INQUIRY_PATTERNS)
 
 
 def _normalize_user_identifier(user_id: str | None) -> str | None:

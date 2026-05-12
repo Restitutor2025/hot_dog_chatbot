@@ -24,12 +24,15 @@ from app.chatbot.options import (
     CATEGORY_OPTIONS,
     ERROR_INFO,
     ERROR_NETWORK,
+    INQUIRY_STEP,
     MAIN_OPTIONS,
     MAIN_SELECTIONS,
     MAIN_STEP,
     OPTION_RESPONSES,
     ProductRepositoryError,
+    FEATURE_IN_PROGRESS_MESSAGE,
     build_database_context_for_message,
+    is_shop_inquiry_message,
     no_data_message_for_source,
 )
 from app.chatbot.schemas import MessageRequest, SelectRequest
@@ -82,6 +85,18 @@ def select_option(request: SelectRequest):
     if not selected:
         return error_response(400, "selected is required", {"available_options": ALL_SELECTABLE_OPTIONS})
 
+    if is_shop_inquiry_message(selected):
+        return api_response(
+            True,
+            "feature in progress",
+            {
+                "selected": selected,
+                "answer": FEATURE_IN_PROGRESS_MESSAGE,
+                "next_step": MAIN_STEP,
+                "options": MAIN_OPTIONS,
+            },
+        )
+
     if selected in MAIN_SELECTIONS:
         selection = MAIN_SELECTIONS[selected]
         return api_response(
@@ -124,6 +139,25 @@ def chat_message(request: MessageRequest):
     session_id = normalize_session_id(request.session_id)
     history = get_history(session_id)
     settings = get_ollama_settings()
+
+    if is_shop_inquiry_message(message):
+        answer = FEATURE_IN_PROGRESS_MESSAGE
+        append_exchange(session_id, message, answer)
+        return api_response(
+            True,
+            "feature in progress",
+            {
+                "answer": answer,
+                "session_id": session_id,
+                "model": settings.model,
+                "base_url": settings.base_url,
+                "db_source": INQUIRY_STEP,
+                "db_records": [],
+                "products": [],
+                "product_error": None,
+            },
+        )
+
     try:
         database_context = build_database_context_for_message(
             message,
